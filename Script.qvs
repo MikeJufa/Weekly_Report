@@ -1,0 +1,275 @@
+//Main Tab
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='$#,##0.00;-$#,##0.00';
+SET TimeFormat='h:mm:ss TT';
+SET DateFormat='D-MMM-YY';
+SET TimestampFormat='D-MMM-YY h:mm:ss[.fff] TT';
+SET FirstWeekDay=1;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='en-CA';
+SET MonthNames='Jan;Feb;Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec';
+SET LongMonthNames='January;February;March;April;May;June;July;August;September;October;November;December';
+SET DayNames='Mon;Tue;Wed;Thu;Fri;Sat;Sun';
+SET LongDayNames='Monday;Tuesday;Wednesday;Thursday;Friday;Saturday;Sunday';
+
+LET vCY = Year(Today());
+LET vLY = Year(Today())-1;
+LET vCM = date(monthstart(today()),'MMM-YY');
+LET vLM = date(addmonths(monthstart(today()),-1),'MMM-YY');
+
+//MappingTable Tab
+Map_RegLanguage:
+Mapping Load * Inline
+[
+lan, language
+E, English
+F, French
+]
+;
+Map_Province:
+Mapping Load * Inline
+[
+Old, New
+Alberta, AB
+ALBERTA, AB
+aLBERTA, AB
+AB, AB
+Ontario, ON
+ONTARIO, ON
+ontario, ON
+on, ON
+On, ON
+ON, ON
+British Columbia, BC
+bc, BC
+BC, BC
+Manitoba, MB
+MANITOBA, MB
+Mb, MB
+MB, MB
+New Brunswick, NB
+NEW BRUNSWICK, NB
+NB, NB
+Nouveau-Brunswick, NB
+Newfoundland and Labrador, NL
+Newfoundland & Labrador, NL
+NL, NL
+Terre-Neuve-et-Labrador, NL
+Nova Scotia, NS
+Nova Scota, NS
+NOVA SCOTIA, NS
+NS, NS
+Northwest Territories, NT
+Territoires du Nord-Ouest, NT
+NT, NT
+Nunavut, NU
+NU, NU
+Prince Edward Island, PE
+Prince Edwards Island, PE
+PE, PE 
+PEi, PE 
+QUEBEC, QC
+Quebec, QC
+Québec, QC
+QC, QC
+Qc, QC
+Saskatchewan, SK 
+SK, SK 
+Yukon, YT
+Yukon Territory, YT
+YT, YT
+]
+;
+
+Map_BSR_Desc:
+Mapping Load * Inline
+[
+INV_BSR, BSR_Desc
+I200001, Sensor
+I200002, Reader
+I200003, Kit
+]
+;
+
+//Subroutine Tab
+//==============================================================================
+// Subroutine to Generate Calendar
+//==============================================================================
+
+SUB CalendarFromField(_field, _calendar, _prefix)
+[$(_calendar)]:
+//Generate Final Calendar
+Load
+            [$(_field)]
+    ,Year([$(_field)]) as [$(_prefix)Year]
+    ,'Q'&Ceil(Month([$(_field)])/3) as [$(_prefix)Quarter]
+    ,Month([$(_field)]) as [$(_prefix)Month]
+    ,Date(MonthStart([$(_field)]),'MMM-YY') as [$(_prefix)YearMonth]
+    ,Date(MonthStart([$(_field)]),'YYYYMM') as [$(_prefix)YearMonthNum]
+    ,Week([$(_field)]) as [$(_prefix)Week]
+    ,WeekDay([$(_field)]) as [$(_prefix)WeekDay]
+    ,Day([$(_field)]) as [$(_prefix)Day]
+    ,WeekStart([$(_field)]) as [$(_prefix)WeekOf]
+    ,if(DayNumberOfYear([$(_field)])<=DayNumberOfYear(Today()), 1, 0) as [$(_prefix)IsInYTD]
+    ,if(Day([$(_field)])<=Day(Today()), 1, 0) as [$(_prefix)IsInMTD]
+;
+//Generate a range of dates between min and max dates.
+Load
+            Date(DateMin + IterNo()) as [$(_field)]                       //Link Field
+While DateMin + IterNo() <= DateMax
+;
+//Find min and max of date of field values.
+Load
+            Min(datefield)-1 as DateMin
+    ,Max(datefield) as DateMax
+;
+//Load date field values.
+Load
+            FieldValue('$(_field)', RecNo()) as datefield
+AutoGenerate FieldValueCount('$(_field)');
+
+END SUB
+
+//DailyPatient Tab
+Qualify *;
+Unqualify Client_Id, REG_DATE;
+
+DP:
+Load
+	*
+    ,if(Patient_Age='<N/A>',dual('<N/A>',8)
+    	,if(Patient_Age>=65,dual('65+',7)
+        	,if(Patient_Age>=55 and Patient_Age<65,dual('55-64',6)
+            	,if(Patient_Age>=45 and Patient_Age<55,dual('45-54',5)
+                	,if(Patient_Age>=35 and Patient_Age<45,dual('35-44',4)
+                    	,if(Patient_Age>=25 and Patient_Age<35,dual('25-34',3)
+                        	,if(Patient_Age>=18 and Patient_Age<25,dual('18-24',2)
+            					,dual('<18',1)))))))) as Patient_AgeGroup
+;
+Load
+	*
+    ,if(SRC_Year_of_Birth<=1900,'<N/A>',Year(today())-SRC_Year_of_Birth) as Patient_Age
+    ,replace(replace(Capitalize(SRC_INSURER_NAME),'Other','Others'),'Unknown','<N/A>') as Insurer_Name
+    ,upper(left(SRC_TYPE,3)) as PatientType
+;
+LOAD
+    PCU_RowID,
+    Client_Id,
+    SRC_STATUS,
+    upper(SRC_PROVINCE) as [SRC_PROVINCE],
+    SRC_POSTAL,
+    SRC_POST_SHORT,
+    SRC_GENDER,
+    SRC_Year_of_Birth,
+    if(len(SRC_INSURER_NAME)>0,SRC_INSURER_NAME,'<N/A>') as SRC_INSURER_NAME,
+    SRC_INSURE_FLAG,
+    SRC_TYPE,
+    SRC_RELATIONSHIP,
+    SRC_THEARAPY,
+    if(len(SRC_METER)>0,SRC_METER,'<N/A>') as SRC_METER,
+    if(len(SRC_IUP_FLAG)>0,SRC_IUP_FLAG,'<N/A>') as SRC_IUP_FLAG,
+    SRC_SUB_FLAG,
+    SRC_HOW_HEAR,
+    SRC_INV_FAXCODE,
+    SRC_INV_PRES,
+    SRC_INV_PRES_FSQA,
+    SRC_INV_HCPfirst,
+    SRC_INV_Hlast,
+    SRC_INV_Hspec,
+    SRC_REG_DATE,
+    SRC_Email,
+    SRC_Address1,
+    SRC_Address2,
+    Capitalize(SRC_City) as SRC_City,
+    ORIG_Language,
+    SRC_Customer_Name,
+    SRC_COMM_CONSENT,
+//    DataSourceID,
+//    Input_rowid,
+//    exception,
+    date(REG_DATE) as [REG_DATE],
+//    Ignored_REG_DATE,
+//    cluster_client_id,
+    WeekOf,
+    DailyPatientsCounter
+FROM [lib://QVD/ADC_DailyPatients.qvd](qvd)
+;
+
+Unqualify *;
+
+YearMonthDP:
+Load *
+	,NumOfClient - Peek('NumOfClient',-1) as DeltaOfClient
+FROM [lib://QVD/ADC_YearMonthDP.qvd](qvd)
+;
+
+
+//DailySales Tab
+Qualify *;
+Unqualify Client_Id, INV_DATE;
+
+DS:
+Load
+	*
+    ,INV_BSR&'-'&ApplyMap('Map_BSR_Desc',INV_BSR,'<N/A>') as INV_BSR_Desc
+    ,ApplyMap('Map_Province',Shipping_Province,'<N/A>') as Shipping_Province_Cleansed
+;
+LOAD
+    INV_Client_ID as Client_Id,
+    INV_NBR,
+    INV_ODATE,
+    upper(trim(INV_TYPE)) as INV_TYPE,
+    INV_BSR,
+    INV_KITFLG,
+    floor(INV_QSHP) as [INV_QSHP],
+    num(INV_SALES,'0.00') as [INV_SALES],
+    INV_PRES,
+    PRES_FSQA,
+    INV_PAYER,
+    INV_PAY1,
+    INV_PAY2,
+    INV_PAY3,
+    capitalize(Shipping_City) as Shipping_City,
+    Shipping_Province,
+    date(INV_DATE) as [INV_DATE],
+    WeekOf,
+    DailySalesCounter,
+    num(INV_PRICE,'0.00') as [INV_PRICE],
+    num(INV_QORD) as [INV_QORD]
+FROM [lib://QVD/ADC_DailySales.qvd](qvd)
+;
+
+Unqualify *;
+
+YearMonthDS:
+Load *
+	,SumOfSales - Peek('SumOfSales',-1) as DeltaSumOfSales
+FROM [lib://QVD/ADC_YearMonthDS.qvd](qvd)
+;
+
+//DateLink Tab
+Unqualify *;
+
+DateLink:
+Load distinct
+	 Client_Id
+    ,REG_DATE as [Date]
+    ,'REG' as [DateType]
+resident DP
+;
+
+Load distinct
+	 Client_Id
+    ,INV_DATE as [Date]
+    ,'INV' as [DateType]
+Resident DS
+;
+//Call Calendar Generator for field "Date"
+CALL CalendarFromField('REG_DATE', 'RegCalendar', 'Reg_'); //Create Calendar for REG_DATE
+CALL CalendarFromField('INV_DATE', 'SalesCalendar', 'Sales_'); //Create Calendar for INV_DATE
+CALL CalendarFromField('Date', 'CommonCalendar', ''); 
