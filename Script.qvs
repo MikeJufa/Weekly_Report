@@ -120,7 +120,7 @@ Load
     ,if(DayNumberOfYear([$(_field)])<=DayNumberOfYear(Today()), 1, 0) as [$(_prefix)IsInYTD]
     ,if(Day([$(_field)])<=Day(Today()), 1, 0) as [$(_prefix)IsInMTD]
 ;
-//Generate a range of dates between min and max dates.
+//Generate a range of dates between Min and Max dates.
 Load
             Date(DateMin + IterNo()) as [$(_field)]                       //Link Field
 While DateMin + IterNo() <= DateMax
